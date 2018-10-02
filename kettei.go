@@ -42,7 +42,7 @@ func NewDecisionMaker(config DecisionMakerConfig) *DecisionMaker {
 	}
 }
 
-func NewDefaultDecisionMaker(voters []Voter) *DecisionMaker {
+func NewDefaultDecisionMaker(voters ...Voter) *DecisionMaker {
 	return NewDecisionMaker(DecisionMakerConfig{
 		Voters:                     voters,
 		Strategy:                   StrategyUnanimous,
@@ -51,7 +51,7 @@ func NewDefaultDecisionMaker(voters []Voter) *DecisionMaker {
 }
 
 // Decides whether the access is possible or not.
-func (maker *DecisionMaker) Decide(ctx *context.Context, attributes []string, subject interface{}) (bool, error) {
+func (maker *DecisionMaker) Decide(ctx context.Context, attributes []string, subject interface{}) (bool, error) {
 	switch maker.strategy {
 	case StrategyAffirmative:
 		return maker.decideAffirmative(ctx, attributes, subject)
@@ -68,7 +68,7 @@ func (maker *DecisionMaker) Decide(ctx *context.Context, attributes []string, su
 //
 // If all voters abstained from voting, the decision will be based on the allowIfAllAbstainDecisions property value
 // (defaults to false).
-func (maker *DecisionMaker) decideAffirmative(ctx *context.Context, attributes []string, subject interface{}) (bool, error) {
+func (maker *DecisionMaker) decideAffirmative(ctx context.Context, attributes []string, subject interface{}) (bool, error) {
 	var deny int
 
 	for _, voter := range maker.voters {
@@ -105,7 +105,7 @@ func (maker *DecisionMaker) decideAffirmative(ctx *context.Context, attributes [
 //
 // If all voters abstained from voting, the decision will be based on the allowIfAllAbstainDecisions property value
 // (defaults to false).
-func (maker *DecisionMaker) decideConsensus(ctx *context.Context, attributes []string, subject interface{}) (bool, error) {
+func (maker *DecisionMaker) decideConsensus(ctx context.Context, attributes []string, subject interface{}) (bool, error) {
 	var grant int
 	var deny int
 
@@ -146,7 +146,7 @@ func (maker *DecisionMaker) decideConsensus(ctx *context.Context, attributes []s
 //
 // If all voters abstained from voting, the decision will be based on the allowIfAllAbstainDecisions property value
 // (defaults to false).
-func (maker *DecisionMaker) decideUnanimous(ctx *context.Context, attributes []string, subject interface{}) (bool, error) {
+func (maker *DecisionMaker) decideUnanimous(ctx context.Context, attributes []string, subject interface{}) (bool, error) {
 	var grant int
 
 	for _, voter := range maker.voters {
