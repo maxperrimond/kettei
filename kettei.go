@@ -8,7 +8,14 @@ import (
 type (
 	Strategy int
 
-	DecisionManager struct {
+	DecisionMakerConfig struct {
+		Voters                             []Voter
+		Strategy                           Strategy
+		AllowIfAllAbstainDecisions         bool
+		AllowIfEqualGrantedDeniedDecisions bool
+	}
+
+	DecisionMaker struct {
 		voters                             []Voter
 		strategy                           Strategy
 		allowIfAllAbstainDecisions         bool
@@ -26,15 +33,32 @@ var (
 	ErrInvalidStrategy = errors.New("invalid strategy")
 )
 
+func NewDecisionMaker(config DecisionMakerConfig) *DecisionMaker {
+	return &DecisionMaker{
+		voters:                             config.Voters,
+		strategy:                           config.Strategy,
+		allowIfAllAbstainDecisions:         config.AllowIfAllAbstainDecisions,
+		allowIfEqualGrantedDeniedDecisions: config.AllowIfEqualGrantedDeniedDecisions,
+	}
+}
+
+func NewDefaultDecisionMaker(voters []Voter) *DecisionMaker {
+	return NewDecisionMaker(DecisionMakerConfig{
+		Voters:                     voters,
+		Strategy:                   StrategyUnanimous,
+		AllowIfAllAbstainDecisions: true,
+	})
+}
+
 // Decides whether the access is possible or not.
-func (manager *DecisionManager) Decide(ctx *context.Context, attributes []string, subject interface{}) (bool, error) {
-	switch manager.strategy {
+func (maker *DecisionMaker) Decide(ctx *context.Context, attributes []string, subject interface{}) (bool, error) {
+	switch maker.strategy {
 	case StrategyAffirmative:
-		return manager.decideAffirmative(ctx, attributes, subject)
+		return maker.decideAffirmative(ctx, attributes, subject)
 	case StrategyConsensus:
-		return manager.decideConsensus(ctx, attributes, subject)
+		return maker.decideConsensus(ctx, attributes, subject)
 	case StrategyUnanimous:
-		return manager.decideUnanimous(ctx, attributes, subject)
+		return maker.decideUnanimous(ctx, attributes, subject)
 	default:
 		return false, ErrInvalidStrategy
 	}
@@ -44,10 +68,10 @@ func (manager *DecisionManager) Decide(ctx *context.Context, attributes []string
 //
 // If all voters abstained from voting, the decision will be based on the allowIfAllAbstainDecisions property value
 // (defaults to false).
-func (manager *DecisionManager) decideAffirmative(ctx *context.Context, attributes []string, subject interface{}) (bool, error) {
+func (maker *DecisionMaker) decideAffirmative(ctx *context.Context, attributes []string, subject interface{}) (bool, error) {
 	var deny int
 
-	for _, voter := range manager.voters {
+	for _, voter := range maker.voters {
 		result, err := vote(voter, ctx, attributes, subject)
 		if err != nil {
 			return false, err
@@ -68,7 +92,7 @@ func (manager *DecisionManager) decideAffirmative(ctx *context.Context, attribut
 		return false, nil
 	}
 
-	return manager.allowIfAllAbstainDecisions, nil
+	return maker.allowIfAllAbstainDecisions, nil
 }
 
 // Grants access if there is consensus of granted against denied responses.
@@ -81,11 +105,11 @@ func (manager *DecisionManager) decideAffirmative(ctx *context.Context, attribut
 //
 // If all voters abstained from voting, the decision will be based on the allowIfAllAbstainDecisions property value
 // (defaults to false).
-func (manager *DecisionManager) decideConsensus(ctx *context.Context, attributes []string, subject interface{}) (bool, error) {
+func (maker *DecisionMaker) decideConsensus(ctx *context.Context, attributes []string, subject interface{}) (bool, error) {
 	var grant int
 	var deny int
 
-	for _, voter := range manager.voters {
+	for _, voter := range maker.voters {
 		result, err := vote(voter, ctx, attributes, subject)
 		if err != nil {
 			return false, err
@@ -112,20 +136,20 @@ func (manager *DecisionManager) decideConsensus(ctx *context.Context, attributes
 	}
 
 	if grant > 0 {
-		return manager.allowIfEqualGrantedDeniedDecisions, nil
+		return maker.allowIfEqualGrantedDeniedDecisions, nil
 	}
 
-	return manager.allowIfAllAbstainDecisions, nil
+	return maker.allowIfAllAbstainDecisions, nil
 }
 
 // Grants access if only grant (or abstain) votes were received.
 //
 // If all voters abstained from voting, the decision will be based on the allowIfAllAbstainDecisions property value
 // (defaults to false).
-func (manager *DecisionManager) decideUnanimous(ctx *context.Context, attributes []string, subject interface{}) (bool, error) {
+func (maker *DecisionMaker) decideUnanimous(ctx *context.Context, attributes []string, subject interface{}) (bool, error) {
 	var grant int
 
-	for _, voter := range manager.voters {
+	for _, voter := range maker.voters {
 		for _, attribute := range attributes {
 			result, err := vote(voter, ctx, []string{attribute}, subject)
 			if err != nil {
@@ -148,5 +172,5 @@ func (manager *DecisionManager) decideUnanimous(ctx *context.Context, attributes
 		return true, nil
 	}
 
-	return manager.allowIfAllAbstainDecisions, nil
+	return maker.allowIfAllAbstainDecisions, nil
 }
