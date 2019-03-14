@@ -21,6 +21,12 @@ type (
 		allowIfAllAbstainDecisions         bool
 		allowIfEqualGrantedDeniedDecisions bool
 	}
+
+	Reason struct {
+		Voter     *Voter
+		Attribute string
+		Reason    string
+	}
 )
 
 const (
@@ -51,7 +57,7 @@ func NewDefaultDecisionMaker(voters ...Voter) *DecisionMaker {
 }
 
 // Decides whether the access is possible or not.
-func (maker *DecisionMaker) Decide(ctx context.Context, attributes []string, subject interface{}) (bool, error) {
+func (maker *DecisionMaker) Decide(ctx context.Context, attributes []string, subject interface{}) (bool, error, []*Reason) {
 	switch maker.strategy {
 	case StrategyAffirmative:
 		return maker.decideAffirmative(ctx, attributes, subject)
@@ -60,7 +66,7 @@ func (maker *DecisionMaker) Decide(ctx context.Context, attributes []string, sub
 	case StrategyUnanimous:
 		return maker.decideUnanimous(ctx, attributes, subject)
 	default:
-		return false, ErrInvalidStrategy
+		return false, ErrInvalidStrategy, nil
 	}
 }
 
@@ -68,19 +74,25 @@ func (maker *DecisionMaker) Decide(ctx context.Context, attributes []string, sub
 //
 // If all voters abstained from voting, the decision will be based on the allowIfAllAbstainDecisions property value
 // (defaults to false).
-func (maker *DecisionMaker) decideAffirmative(ctx context.Context, attributes []string, subject interface{}) (bool, error) {
+func (maker *DecisionMaker) decideAffirmative(ctx context.Context, attributes []string, subject interface{}) (bool, error, []*Reason) {
 	var deny int
 
+	var reasons []*Reason
 	for _, voter := range maker.voters {
-		result, err := vote(voter, ctx, attributes, subject)
+		result, err, voterReasons := vote(voter, ctx, attributes, subject)
+		if len(voterReasons) > 0 {
+			reasons = append(reasons, voterReasons...)
+		}
+
 		if err != nil {
-			return false, err
+			return false, err, reasons
 		}
 
 		switch result {
 		case AccessGranted:
-			return true, nil
+			return true, nil, reasons
 		case AccessDenied:
+
 			deny += 1
 			break
 		default:
@@ -89,10 +101,10 @@ func (maker *DecisionMaker) decideAffirmative(ctx context.Context, attributes []
 	}
 
 	if deny > 0 {
-		return false, nil
+		return false, nil, reasons
 	}
 
-	return maker.allowIfAllAbstainDecisions, nil
+	return maker.allowIfAllAbstainDecisions, nil, reasons
 }
 
 // Grants access if there is consensus of granted against denied responses.
@@ -105,14 +117,19 @@ func (maker *DecisionMaker) decideAffirmative(ctx context.Context, attributes []
 //
 // If all voters abstained from voting, the decision will be based on the allowIfAllAbstainDecisions property value
 // (defaults to false).
-func (maker *DecisionMaker) decideConsensus(ctx context.Context, attributes []string, subject interface{}) (bool, error) {
+func (maker *DecisionMaker) decideConsensus(ctx context.Context, attributes []string, subject interface{}) (bool, error, []*Reason) {
 	var grant int
 	var deny int
 
+	var reasons []*Reason
 	for _, voter := range maker.voters {
-		result, err := vote(voter, ctx, attributes, subject)
+		result, err, voterReasons := vote(voter, ctx, attributes, subject)
+		if len(voterReasons) > 0 {
+			reasons = append(reasons, voterReasons...)
+		}
+
 		if err != nil {
-			return false, err
+			return false, err, reasons
 		}
 
 		switch result {
@@ -128,32 +145,37 @@ func (maker *DecisionMaker) decideConsensus(ctx context.Context, attributes []st
 	}
 
 	if grant > deny {
-		return true, nil
+		return true, nil, reasons
 	}
 
 	if deny > grant {
-		return false, nil
+		return false, nil, reasons
 	}
 
 	if grant > 0 {
-		return maker.allowIfEqualGrantedDeniedDecisions, nil
+		return maker.allowIfEqualGrantedDeniedDecisions, nil, reasons
 	}
 
-	return maker.allowIfAllAbstainDecisions, nil
+	return maker.allowIfAllAbstainDecisions, nil, reasons
 }
 
 // Grants access if only grant (or abstain) votes were received.
 //
 // If all voters abstained from voting, the decision will be based on the allowIfAllAbstainDecisions property value
 // (defaults to false).
-func (maker *DecisionMaker) decideUnanimous(ctx context.Context, attributes []string, subject interface{}) (bool, error) {
+func (maker *DecisionMaker) decideUnanimous(ctx context.Context, attributes []string, subject interface{}) (bool, error, []*Reason) {
 	var grant int
 
+	var reasons []*Reason
 	for _, voter := range maker.voters {
 		for _, attribute := range attributes {
-			result, err := vote(voter, ctx, []string{attribute}, subject)
+			result, err, voterReasons := vote(voter, ctx, []string{attribute}, subject)
+			if len(voterReasons) > 0 {
+				reasons = append(reasons, voterReasons...)
+			}
+
 			if err != nil {
-				return false, err
+				return false, err, reasons
 			}
 
 			switch result {
@@ -161,7 +183,7 @@ func (maker *DecisionMaker) decideUnanimous(ctx context.Context, attributes []st
 				grant += 1
 				break
 			case AccessDenied:
-				return false, nil
+				return false, nil, reasons
 			default:
 				break
 			}
@@ -169,8 +191,8 @@ func (maker *DecisionMaker) decideUnanimous(ctx context.Context, attributes []st
 	}
 
 	if grant > 0 {
-		return true, nil
+		return true, nil, reasons
 	}
 
-	return maker.allowIfAllAbstainDecisions, nil
+	return maker.allowIfAllAbstainDecisions, nil, reasons
 }
